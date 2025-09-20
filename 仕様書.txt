@@ -1,0 +1,94 @@
+# 仕様書
+
+## 目的
+- フォルダ内のテキスト資源から章を抽出し、例示スキーマに準拠した学習用JSON（コース定義＋対話スクリプト）を生成する。
+- 生成物・文言はすべて日本語。
+
+## スコープ
+- 対象：章抽出／章→パート分割／対話スクリプト生成／診断クイズ・確認クイズ生成
+- 非対象：OCR、外部知識の付与、画像・表の解析
+
+## 章検出
+- 「章分け.txt」に記載された章境界情報を最優先で用いて章を確定する（基本はこれに依拠）。
+- 章分け.txtが欠落または記述が曖昧な場合のみ、強見出し（例：「第n章」「Chapter n」）を補助的に用いる。
+
+## 用語
+- 章（Chapter）：章分け.txtに記載された範囲を1単位とする。
+- パート（Part）：章を3〜5の論理的まとまりに分割した単位。
+- 対話スクリプト：各パート本文を対話形式JSONで記述したもの。
+- コース定義：course.jsonのcourse.chaptersに格納する章メタデータ。
+
+## 入力
+- 入力ディレクトリ：「.」（ワークスペース直下）
+- 対象ファイル：*.txt、テキスト層を持つ*.pdf（テキスト層なしPDFはスキップ）
+- メタ情報
+  - COURSE_ID（例：social-psychology）
+  - COURSE_TITLE（例：社会心理学 実践講座）
+  - OUTPUT_BASE_PATH（例：courses/social-psychology/chat-scripts）
+  - PARTS_PER_CHAPTER：3〜5（未指定時は内容から自動決定）
+
+## 出力
+- 成果物（A+B）
+  - A：course.jsonへ追記可能な「章オブジェクト」配列
+  - B：各パートの対話スクリプトJSON（ファイル内容）
+- 出力モード
+  - json：AとBを単一JSONで返す（patchモードは廃止）
+
+## 命名・パス規則
+- 章ID：chapter-{n}（出力内通番）
+- パートID：part-{n}-{m}（章n内通番）
+- パス：courses/{COURSE_ID}/chat-scripts/chapter-{n}/part-{n}-{m}.json
+- course.json：既存のcourse.id/title/description/chaptersを保持し、course.chapters末尾に追記（既存他章は変更しない）。
+
+## データモデル（スキーマ例・文字列として理解）
+- 章オブジェクト（A）
+{
+  "id": "chapter-{n}",
+  "title": "章タイトル（目安40字以内）",
+  "summary": "章要約（目的・中心概念・具体例を含む1000字）",
+  "parts": [
+    {
+      "id": "part-{n}-{m}",
+      "title": "パートタイトル",
+      "keywords": ["主要概念"],  // 最低1要素
+      "chatScript": "{OUTPUT_BASE_PATH}/chapter-{n}/part-{n}-{m}.json",
+      "diagnosticQuizzes": {
+        "主要概念": {
+          "beginner":    {"question": "", "options": ["","","",""], "correct": 0, "feedback": ""},
+          "intermediate":{"question": "", "options": ["","","",""], "correct": 1, "feedback": ""},
+          "advanced":    {"question": "", "options": ["","","",""], "correct": 2, "feedback": ""},
+          "expert":      {"question": "", "options": ["","","",""], "correct": 3, "feedback": ""}
+        }
+      }
+    }
+  ],
+  "confirmationQuizzes": [
+    {"question": "", "options": ["","","",""], "correct": 0, "feedback": ""},
+    {"question": "", "options": ["","","",""], "correct": 1, "feedback": ""}
+  ]
+}
+
+- 対話スクリプト（B 各ファイル内容）
+{
+  "title": "第{n}章-パート{m}：{パートタイトル}",
+  "messages": [
+    {"speaker": "narrator", "content": "…"},
+    {"speaker": "teacher",  "content": "…"},
+    {"speaker": "student",  "content": "…"}
+  ]
+}
+// messagesは必ず各パート10〜15件にして。
+// speakerはnarrator|teacher|studentのみ
+// 会話スタイル：正しさとわかりやすさを重視しつつ、teacher/studentが軽い雑談やため息を交える自然な雑談風トーン。必要な専門用語は残しつつ、分かりやすさやナチュラルな会話文を徹底する。
+
+## 生成要件
+- 章summary：必ず1500字前後で作成（目的・中心概念・具体例を含む）。
+- 分割方針：導入→概念→適用→落とし込み→まとめ 等で4〜6パート。
+- スタイル：平易で具体。必要な専門用語は残しつつ易しい説明を添える。身近な比喩可。学術的整合性を担保。
+- クイズ：資料根拠に忠実。各設問は4択、正答一意（optionsは常に4件、correctは0..3の整数）。
+
+## 品質基準
+- 言語：自然な日本語で統一。
+- 形式：妥当なJSON（スキーマ準拠）。optionsは常に4件、correctは0..3。
+- 整合性：ID／パス／keywords／diagnosticQuizzesキーの一致。
+- 分量：summary=1500字前後、messages=各パート12~15。
